@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { supabaseNavegador } from "@/lib/supabase/client";
+import { authClient } from "@/lib/auth-client";
 import { Chama } from "./Icones";
 
 type Etapa = "formulario" | "enviado";
@@ -18,11 +18,7 @@ export function Consentimento() {
     if (!maior || !lgpd || !email.trim() || enviando) return;
     setEnviando(true);
     setErro(null);
-    const sb = supabaseNavegador();
-    const { error } = await sb.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
+    const { error } = await authClient.signIn.magicLink({ email: email.trim(), callbackURL: "/" });
     setEnviando(false);
     if (error) {
       setErro("Não foi possível enviar o link agora. Confira o e-mail digitado e tente de novo.");
@@ -114,7 +110,7 @@ export function Consentimento() {
           {enviando ? "Enviando..." : "Entrar com link por e-mail"}
         </button>
         <p className="muted" style={{ fontSize: "0.85rem" }}>
-          Não pedimos senha. Você recebe um link de acesso válido por tempo limitado.
+          Não pedimos senha. Você recebe um link de acesso válido por 15 minutos.
         </p>
       </form>
     </main>

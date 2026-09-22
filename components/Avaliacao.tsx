@@ -3,10 +3,12 @@ import { useState } from "react";
 import { calcularPerfil, DIMENSOES, NIVEIS, PERGUNTAS } from "@/lib/maturity";
 import type { Perfil } from "@/lib/types";
 
-export function Avaliacao({ onConcluir }: { onConcluir: (p: Perfil) => void }) {
+export function Avaliacao({ onConcluir }: { onConcluir: (respostas: number[]) => Promise<Perfil | null> }) {
   const [passo, setPasso] = useState(0);
   const [respostas, setRespostas] = useState<(number | null)[]>(() => PERGUNTAS.map(() => null));
   const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   if (perfil) {
     const nivel = NIVEIS[perfil.nivel];
@@ -40,8 +42,25 @@ export function Avaliacao({ onConcluir }: { onConcluir: (p: Perfil) => void }) {
           quando quiser.
         </p>
 
-        <button className="btn btn-primario btn-largo" onClick={() => onConcluir(perfil)}>
-          Começar meu plano de 7 dias
+        {erro && (
+          <p className="erro" role="alert">
+            {erro}
+          </p>
+        )}
+        <button
+          className="btn btn-primario btn-largo"
+          disabled={enviando}
+          onClick={async () => {
+            setEnviando(true);
+            setErro(null);
+            const salvo = await onConcluir(respostas.map((r) => r ?? 0));
+            if (!salvo) {
+              setEnviando(false);
+              setErro("Não foi possível salvar agora. Tente de novo.");
+            }
+          }}
+        >
+          {enviando ? "Salvando..." : "Começar meu plano de 7 dias"}
         </button>
       </main>
     );

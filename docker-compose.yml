@@ -1,0 +1,63 @@
+# Lâmpada — tudo local: banco de dados, login e o app, num só compose.
+#
+#   cp .env.example .env.docker   # preencha DATABASE_URL, AUTH_SECRET, ANTHROPIC_API_KEY etc.
+#   docker compose up -d --build
+#   docker compose exec db psql -U lampada -d lampada -f /schema.sql   # só na primeira vez
+#
+# Abra http://localhost:3000. Sem EMAIL_SERVER configurado no .env.docker, o link de
+# login mágico aparece no log do app: docker compose logs -f app
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: lampada-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lampada
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env.docker}
+      POSTGRES_DB: lampada
+    volumes:
+      - lampada-db-data:/var/lib/postgresql/data
+      - ./db/schema.sql:/schema.sql:ro
+    ports:
+      # Só para você poder conectar com um cliente Postgres de fora, se quiser. Pode remover.
+      - ${POSTGRES_PORT:-5432}:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lampada -d lampada"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lampada-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - ${LAMPADA_PORT:-3000}:3000
+    environment:
+      DATABASE_URL: postgres://lampada:${POSTGRES_PASSWORD}@db:5432/lampada
+      AUTH_SECRET: ${AUTH_SECRET:?defina AUTH_SECRET no .env.docker (openssl rand -base64 32)}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      EMAIL_SERVER: ${EMAIL_SERVER:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Lâmpada <lampada@localhost>}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY no .env.docker}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
+      DAILY_LIMIT: ${DAILY_LIMIT:-40}
+
+  # Opcional: captura os e-mails de login localmente, sem precisar de provedor de e-mail
+  # de verdade. Interface web em http://localhost:8025. Para usar, defina no .env.docker:
+  #   EMAIL_SERVER=smtp://mailpit:1025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: lampada-mailpit
+    restart: unless-stopped
+    ports:
+      - 8025:8025
+
+volumes:
+  lampada-db-data:

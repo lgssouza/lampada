@@ -12,13 +12,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# As variáveis NEXT_PUBLIC_* são incorporadas ao JavaScript do navegador NO MOMENTO DO BUILD,
-# não em tempo de execução. Por isso precisam chegar como build arg, não só como variável de
-# ambiente do container em produção.
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+# O Better Auth não precisa de nenhuma variável NEXT_PUBLIC_* — o navegador só fala
+# com /api/auth/* no mesmo domínio, então não há nada para incorporar no build.
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build

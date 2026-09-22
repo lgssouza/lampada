@@ -2,9 +2,9 @@ node_modules
 .next
 .env
 .env.local
+.env.docker
 *.log
 npm-debug.log*
 .git
 .gitignore
 README.md
-DOCKER.md

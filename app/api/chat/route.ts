@@ -1,11 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { buscarPassagem } from "@/lib/bible";
 import { CONTEUDO_CRISE, detectarCrise } from "@/lib/crisis";
+import { inserirMensagem } from "@/lib/db";
+import { pool } from "@/lib/pg";
 import { montarPrompt } from "@/lib/prompt";
 import { consumir } from "@/lib/ratelimit";
-import { supabaseServidor } from "@/lib/supabase/server";
-import type { Dimensao, Nivel, Passagem, TipoCrise } from "@/lib/types";
+import type { Dimensao, Mensagem, Nivel, Passagem, TipoCrise } from "@/lib/types";
+import { novoId } from "@/lib/storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -34,57 +38,36 @@ const ferramentas: Anthropic.Tool[] = [
   },
 ];
 
-type Entrada = { role: "user" | "assistant"; content: string };
-
-function limparHistorico(bruto: unknown): Entrada[] | null {
-  if (!Array.isArray(bruto)) return null;
-  const itens: Entrada[] = [];
-  for (const m of bruto.slice(-12)) {
-    if (!m || typeof m !== "object") return null;
-    const { role, content } = m as Record<string, unknown>;
-    if ((role !== "user" && role !== "assistant") || typeof content !== "string") return null;
-    const texto = content.trim().slice(0, 2000);
-    if (texto) itens.push({ role, content: texto });
-  }
-  while (itens.length && itens[0].role !== "user") itens.shift();
-  if (!itens.length || itens[itens.length - 1].role !== "user") return null;
-  return itens;
-}
-
 function respostaCrise(tipo: TipoCrise) {
   const c = CONTEUDO_CRISE[tipo];
   return NextResponse.json({ texto: c.mensagem, crise: tipo, passagens: [] });
 }
 
 export async function POST(req: Request) {
-  let corpo: { mensagens?: unknown; perfil?: { nivel?: string; foco?: string } };
+  const sessao = await auth.api.getSession({ headers: await headers() });
+  if (!sessao) {
+    return NextResponse.json({ erro: "Faça login para conversar com a Lâmpada." }, { status: 401 });
+  }
+  const userId = sessao.user.id;
+
+  let corpo: { mensagem?: unknown; perfil?: { nivel?: string; foco?: string } };
   try {
     corpo = await req.json();
   } catch {
     return NextResponse.json({ erro: "Requisição inválida." }, { status: 400 });
   }
+  const texto0 = typeof corpo.mensagem === "string" ? corpo.mensagem.trim().slice(0, 2000) : "";
+  if (!texto0) return NextResponse.json({ erro: "Mensagem inválida." }, { status: 400 });
 
-  const historico = limparHistorico(corpo.mensagens);
-  if (!historico) return NextResponse.json({ erro: "Mensagem inválida." }, { status: 400 });
-
-  // Camada 1 do protocolo de crise: antes de gastar qualquer chamada ao modelo e antes do limite diário.
-  const ultima = historico[historico.length - 1].content;
-  const crise = detectarCrise(ultima);
+  // Camada 1 do protocolo de crise: antes de gastar qualquer chamada ao modelo, ao banco, ou ao limite diário.
+  const crise = detectarCrise(texto0);
   if (crise) return respostaCrise(crise);
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ erro: "O servidor ainda não foi configurado (falta ANTHROPIC_API_KEY)." }, { status: 500 });
   }
 
-  const sbServidor = await supabaseServidor();
-  const {
-    data: { user },
-  } = await sbServidor.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ erro: "Faça login para conversar com a Lâmpada." }, { status: 401 });
-  }
-
-  const limite = consumir(`chat:${user.id}`, LIMITE_DIARIO);
+  const limite = consumir(`chat:${userId}`, LIMITE_DIARIO);
   if (!limite.ok) {
     return NextResponse.json(
       { erro: "Você atingiu o limite de mensagens de hoje. Volte amanhã, e enquanto isso continue com a leitura do dia." },
@@ -92,12 +75,22 @@ export async function POST(req: Request) {
     );
   }
 
+  // Persiste a mensagem da pessoa já aqui, antes de chamar o modelo: se a chamada falhar,
+  // a mensagem dela não se perde.
+  const mensagemUsuario: Mensagem = { id: novoId(), role: "user", content: texto0 };
+  await inserirMensagem(userId, mensagemUsuario);
+
+  const historicoRes = await pool.query(
+    `select role, content from mensagens where user_id = $1 order by criado_em asc limit 12`,
+    [userId],
+  );
+
   const nivel = NIVEIS.find((n) => n === corpo.perfil?.nivel);
   const foco = DIMENSOES.find((d) => d === corpo.perfil?.foco);
   const sistema = montarPrompt(nivel, foco);
 
   const client = new Anthropic();
-  const mensagens: Anthropic.MessageParam[] = historico.map((m) => ({ role: m.role, content: m.content }));
+  const mensagens: Anthropic.MessageParam[] = historicoRes.rows.map((m) => ({ role: m.role, content: m.content }));
   const passagens: Passagem[] = [];
   let texto = "";
 
@@ -152,10 +145,19 @@ export async function POST(req: Request) {
 
   // Camada 2 do protocolo de crise: o modelo percebeu risco que os padrões não pegaram.
   const marca = texto.match(/\[\[CRISE:(suicidio|violencia)\]\]/);
-  if (marca) return respostaCrise(marca[1] as TipoCrise);
+  if (marca) {
+    const tipo = marca[1] as TipoCrise;
+    const c = CONTEUDO_CRISE[tipo];
+    const resposta: Mensagem = { id: novoId(), role: "assistant", content: c.mensagem, crise: tipo };
+    await inserirMensagem(userId, resposta);
+    return NextResponse.json({ texto: c.mensagem, crise: tipo, passagens: [] });
+  }
 
   if (!texto) {
     return NextResponse.json({ erro: "Não consegui formular uma resposta. Tente reformular a pergunta." }, { status: 502 });
   }
+
+  const resposta: Mensagem = { id: novoId(), role: "assistant", content: texto, passagens };
+  await inserirMensagem(userId, resposta);
   return NextResponse.json({ texto, passagens });
 }

@@ -1,14 +1,14 @@
 "use client";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { useState } from "react";
+import { authClient } from "@/lib/auth-client";
 import { DIMENSOES, NIVEIS } from "@/lib/maturity";
 import { PLANOS } from "@/lib/plans";
 import { baixarDados } from "@/lib/storage";
 import type { Estado } from "@/lib/types";
 
-type Props = { estado: Estado; sb: SupabaseClient; onRefazer: () => void; onSaiu: () => void };
+type Props = { estado: Estado; onRefazer: () => void; onSaiu: () => void };
 
-export function Jornada({ estado, sb, onRefazer, onSaiu }: Props) {
+export function Jornada({ estado, onRefazer, onSaiu }: Props) {
   const [apagando, setApagando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const perfil = estado.perfil!;
@@ -19,7 +19,7 @@ export function Jornada({ estado, sb, onRefazer, onSaiu }: Props) {
   const desafios = plano.desafios.length;
 
   async function sair() {
-    await sb.auth.signOut();
+    await authClient.signOut();
     onSaiu();
   }
 
@@ -30,7 +30,7 @@ export function Jornada({ estado, sb, onRefazer, onSaiu }: Props) {
     try {
       const res = await fetch("/api/conta/apagar", { method: "POST" });
       if (!res.ok) throw new Error();
-      await sb.auth.signOut();
+      await authClient.signOut();
       onSaiu();
     } catch {
       setErro("Não foi possível apagar a conta agora. Tente novamente em instantes.");

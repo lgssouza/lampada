@@ -1,8 +1,9 @@
 import type { Estado, Passagem } from "./types";
 
-// A partir da versão com login, o progresso, as anotações e as conversas ficam no banco (Supabase),
-// não mais neste aparelho. O que continua em localStorage é só o cache do texto bíblico (não é dado
-// pessoal, é o mesmo texto para todo mundo) e o utilitário de baixar uma cópia dos dados.
+// Progresso, anotações e conversas ficam no banco agora, não neste arquivo. O que continua
+// aqui é só o cache do texto bíblico no navegador (não é dado pessoal — é o mesmo texto para
+// todo mundo), o download de uma cópia dos dados, e o gerador de ids (usado no cliente e no
+// servidor).
 
 const CHAVE_PASSAGENS = "lampada:passagens:v1";
 

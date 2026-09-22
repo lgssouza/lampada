@@ -1,8 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { CONTEUDO_CRISE } from "@/lib/crisis";
-import { apagarChat, inserirMensagem } from "@/lib/db";
 import { novoId } from "@/lib/storage";
 import type { Estado, Mensagem } from "@/lib/types";
 import { IconeEnviar, IconeTelefone } from "./Icones";
@@ -15,12 +13,7 @@ const SUGESTOES = [
   "O que a Bíblia diz sobre trabalho e dinheiro?",
 ];
 
-type Props = {
-  estado: Estado;
-  atualizar: (fn: (e: Estado) => Estado) => void;
-  sb: SupabaseClient;
-  userId: string;
-};
+type Props = { estado: Estado; atualizar: (fn: (e: Estado) => Estado) => void };
 
 function CartaoCrise({ tipo }: { tipo: NonNullable<Mensagem["crise"]> }) {
   const c = CONTEUDO_CRISE[tipo];
@@ -52,7 +45,7 @@ function CartaoCrise({ tipo }: { tipo: NonNullable<Mensagem["crise"]> }) {
   );
 }
 
-export function Conversa({ estado, atualizar, sb, userId }: Props) {
+export function Conversa({ estado, atualizar }: Props) {
   const [texto, setTexto] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -61,7 +54,6 @@ export function Conversa({ estado, atualizar, sb, userId }: Props) {
   const chat = estado.chat;
 
   useEffect(() => {
-    // Em crise, a pessoa precisa ver o título e os telefones primeiro: rola até o topo do cartão.
     const ultima = chat[chat.length - 1];
     if (ultima?.crise) {
       document.querySelector(".msg:last-of-type .crise")?.scrollIntoView({ block: "start" });
@@ -78,19 +70,14 @@ export function Conversa({ estado, atualizar, sb, userId }: Props) {
     if (areaRef.current) areaRef.current.style.height = "auto";
 
     const usuario: Mensagem = { id: novoId(), role: "user", content: limpo };
-    const historico = [...chat, usuario];
-    atualizar((e) => ({ ...e, chat: historico }));
-    inserirMensagem(sb, userId, usuario); // grava em segundo plano; não trava a conversa se falhar
+    atualizar((e) => ({ ...e, chat: [...e.chat, usuario] }));
     setCarregando(true);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mensagens: historico.slice(-12).map((m) => ({ role: m.role, content: m.content })),
-          perfil: { nivel: estado.perfil?.nivel, foco: estado.perfil?.foco },
-        }),
+        body: JSON.stringify({ mensagem: limpo, perfil: { nivel: estado.perfil?.nivel, foco: estado.perfil?.foco } }),
       });
       const dados = await res.json();
       if (!res.ok) throw new Error(dados.erro ?? "Algo deu errado.");
@@ -102,7 +89,6 @@ export function Conversa({ estado, atualizar, sb, userId }: Props) {
         crise: dados.crise,
       };
       atualizar((e) => ({ ...e, chat: [...e.chat, resposta] }));
-      inserirMensagem(sb, userId, resposta);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Algo deu errado. Tente novamente.");
     } finally {
@@ -128,7 +114,7 @@ export function Conversa({ estado, atualizar, sb, userId }: Props) {
             onClick={async () => {
               if (!window.confirm("Apagar esta conversa da sua conta? Isso não pode ser desfeito.")) return;
               atualizar((e) => ({ ...e, chat: [] }));
-              await apagarChat(sb, userId);
+              await fetch("/api/mensagens", { method: "DELETE" });
             }}
           >
             Nova conversa
