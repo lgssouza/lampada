@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { CONTEUDO_CRISE } from "@/lib/crisis";
+import { apagarChat, inserirMensagem } from "@/lib/db";
 import { novoId } from "@/lib/storage";
 import type { Estado, Mensagem } from "@/lib/types";
 import { IconeEnviar, IconeTelefone } from "./Icones";
@@ -13,7 +15,12 @@ const SUGESTOES = [
   "O que a Bíblia diz sobre trabalho e dinheiro?",
 ];
 
-type Props = { estado: Estado; atualizar: (fn: (e: Estado) => Estado) => void };
+type Props = {
+  estado: Estado;
+  atualizar: (fn: (e: Estado) => Estado) => void;
+  sb: SupabaseClient;
+  userId: string;
+};
 
 function CartaoCrise({ tipo }: { tipo: NonNullable<Mensagem["crise"]> }) {
   const c = CONTEUDO_CRISE[tipo];
@@ -45,7 +52,7 @@ function CartaoCrise({ tipo }: { tipo: NonNullable<Mensagem["crise"]> }) {
   );
 }
 
-export function Conversa({ estado, atualizar }: Props) {
+export function Conversa({ estado, atualizar, sb, userId }: Props) {
   const [texto, setTexto] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -73,6 +80,7 @@ export function Conversa({ estado, atualizar }: Props) {
     const usuario: Mensagem = { id: novoId(), role: "user", content: limpo };
     const historico = [...chat, usuario];
     atualizar((e) => ({ ...e, chat: historico }));
+    inserirMensagem(sb, userId, usuario); // grava em segundo plano; não trava a conversa se falhar
     setCarregando(true);
 
     try {
@@ -94,6 +102,7 @@ export function Conversa({ estado, atualizar }: Props) {
         crise: dados.crise,
       };
       atualizar((e) => ({ ...e, chat: [...e.chat, resposta] }));
+      inserirMensagem(sb, userId, resposta);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Algo deu errado. Tente novamente.");
     } finally {
@@ -116,8 +125,10 @@ export function Conversa({ estado, atualizar }: Props) {
         {chat.length > 0 && (
           <button
             className="btn-texto"
-            onClick={() => {
-              if (window.confirm("Apagar esta conversa deste aparelho?")) atualizar((e) => ({ ...e, chat: [] }));
+            onClick={async () => {
+              if (!window.confirm("Apagar esta conversa da sua conta? Isso não pode ser desfeito.")) return;
+              atualizar((e) => ({ ...e, chat: [] }));
+              await apagarChat(sb, userId);
             }}
           >
             Nova conversa

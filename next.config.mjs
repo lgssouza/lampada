@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // "standalone" empacota só o necessário para rodar (sem todo o node_modules) — usado pelo Dockerfile.
+  output: "standalone",
   async headers() {
     return [
       {

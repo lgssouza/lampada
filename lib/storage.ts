@@ -1,42 +1,10 @@
 import type { Estado, Passagem } from "./types";
 
-const CHAVE = "lampada:v1";
+// A partir da versão com login, o progresso, as anotações e as conversas ficam no banco (Supabase),
+// não mais neste aparelho. O que continua em localStorage é só o cache do texto bíblico (não é dado
+// pessoal, é o mesmo texto para todo mundo) e o utilitário de baixar uma cópia dos dados.
+
 const CHAVE_PASSAGENS = "lampada:passagens:v1";
-
-export const ESTADO_VAZIO: Estado = { consentimento: null, perfil: null, plano: null, chat: [] };
-
-export function carregar(): Estado {
-  try {
-    const bruto = localStorage.getItem(CHAVE);
-    if (!bruto) return ESTADO_VAZIO;
-    const e = JSON.parse(bruto) as Partial<Estado>;
-    return {
-      consentimento: e.consentimento ?? null,
-      perfil: e.perfil ?? null,
-      plano: e.plano ?? null,
-      chat: Array.isArray(e.chat) ? e.chat : [],
-    };
-  } catch {
-    return ESTADO_VAZIO;
-  }
-}
-
-export function salvar(e: Estado) {
-  try {
-    localStorage.setItem(CHAVE, JSON.stringify({ ...e, chat: e.chat.slice(-100) }));
-  } catch {
-    /* armazenamento cheio ou bloqueado: o app continua funcionando nesta sessão */
-  }
-}
-
-export function apagarTudo() {
-  try {
-    localStorage.removeItem(CHAVE);
-    localStorage.removeItem(CHAVE_PASSAGENS);
-  } catch {
-    /* ignorar */
-  }
-}
 
 export function lerCachePassagem(ref: string): Passagem | null {
   try {
@@ -68,5 +36,6 @@ export function baixarDados(e: Estado) {
 }
 
 export function novoId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }

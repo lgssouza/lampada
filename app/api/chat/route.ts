@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { buscarPassagem } from "@/lib/bible";
 import { CONTEUDO_CRISE, detectarCrise } from "@/lib/crisis";
 import { montarPrompt } from "@/lib/prompt";
-import { consumir, ipDaRequisicao } from "@/lib/ratelimit";
+import { consumir } from "@/lib/ratelimit";
+import { supabaseServidor } from "@/lib/supabase/server";
 import type { Dimensao, Nivel, Passagem, TipoCrise } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -75,7 +76,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ erro: "O servidor ainda não foi configurado (falta ANTHROPIC_API_KEY)." }, { status: 500 });
   }
 
-  const limite = consumir(`chat:${ipDaRequisicao(req)}`, LIMITE_DIARIO);
+  const sbServidor = await supabaseServidor();
+  const {
+    data: { user },
+  } = await sbServidor.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ erro: "Faça login para conversar com a Lâmpada." }, { status: 401 });
+  }
+
+  const limite = consumir(`chat:${user.id}`, LIMITE_DIARIO);
   if (!limite.ok) {
     return NextResponse.json(
       { erro: "Você atingiu o limite de mensagens de hoje. Volte amanhã, e enquanto isso continue com a leitura do dia." },

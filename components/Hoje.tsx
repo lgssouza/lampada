@@ -10,7 +10,7 @@ import { usePassagem } from "./usePassagem";
 
 type Props = {
   estado: Estado;
-  atualizar: (fn: (e: Estado) => Estado) => void;
+  atualizar: (fn: (e: Estado) => Estado, opcoes?: { atrasarPersistencia?: boolean }) => void;
   onRefazer: () => void;
 };
 
@@ -41,7 +41,11 @@ export function Hoje({ estado, atualizar, onRefazer }: Props) {
   }
 
   function escreverNota(texto: string) {
-    atualizar((e) => (e.plano ? { ...e, plano: { ...e.plano, notas: { ...e.plano.notas, [dia.dia]: texto } } } : e));
+    // Espera uma pausa na digitação antes de gravar, para não mandar uma requisição a cada tecla.
+    atualizar(
+      (e) => (e.plano ? { ...e, plano: { ...e.plano, notas: { ...e.plano.notas, [dia.dia]: texto } } } : e),
+      { atrasarPersistencia: true },
+    );
   }
 
   return (

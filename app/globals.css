@@ -383,6 +383,11 @@ h3 {
   font-weight: 600;
   font-size: 0.95rem;
 }
+.form-login {
+  display: grid;
+  gap: 18px;
+}
+.campo input,
 .campo textarea,
 .composer textarea {
   width: 100%;

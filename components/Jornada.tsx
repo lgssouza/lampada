@@ -1,18 +1,42 @@
 "use client";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { useState } from "react";
 import { DIMENSOES, NIVEIS } from "@/lib/maturity";
 import { PLANOS } from "@/lib/plans";
-import { apagarTudo, baixarDados } from "@/lib/storage";
+import { baixarDados } from "@/lib/storage";
 import type { Estado } from "@/lib/types";
 
-type Props = { estado: Estado; onRefazer: () => void; onApagado: () => void };
+type Props = { estado: Estado; sb: SupabaseClient; onRefazer: () => void; onSaiu: () => void };
 
-export function Jornada({ estado, onRefazer, onApagado }: Props) {
+export function Jornada({ estado, sb, onRefazer, onSaiu }: Props) {
+  const [apagando, setApagando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const perfil = estado.perfil!;
   const plano = estado.plano!;
   const nivel = NIVEIS[perfil.nivel];
   const total = PLANOS[plano.nivel].length;
   const feitos = plano.concluidos.length;
   const desafios = plano.desafios.length;
+
+  async function sair() {
+    await sb.auth.signOut();
+    onSaiu();
+  }
+
+  async function apagarConta() {
+    if (!window.confirm("Apagar sua conta e todos os seus dados? Isso não pode ser desfeito.")) return;
+    setApagando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/conta/apagar", { method: "POST" });
+      if (!res.ok) throw new Error();
+      await sb.auth.signOut();
+      onSaiu();
+    } catch {
+      setErro("Não foi possível apagar a conta agora. Tente novamente em instantes.");
+      setApagando(false);
+    }
+  }
 
   return (
     <main className="tela">
@@ -77,22 +101,22 @@ export function Jornada({ estado, onRefazer, onApagado }: Props) {
       </section>
 
       <section aria-labelledby="h-dados">
-        <h2 id="h-dados">Seus dados</h2>
-        <p>Tudo fica neste aparelho. Você pode levar uma cópia ou apagar tudo.</p>
+        <h2 id="h-dados">Sua conta e seus dados</h2>
+        <p>Seu progresso, suas anotações e suas conversas ficam associados à sua conta, protegidos por login.</p>
+        {erro && (
+          <p className="erro" role="alert">
+            {erro}
+          </p>
+        )}
         <div className="acoes">
           <button className="btn btn-secundario" onClick={() => baixarDados(estado)}>
             Baixar meus dados
           </button>
-          <button
-            className="btn btn-perigo"
-            onClick={() => {
-              if (window.confirm("Apagar todos os seus dados deste aparelho? Isso não pode ser desfeito.")) {
-                apagarTudo();
-                onApagado();
-              }
-            }}
-          >
-            Apagar tudo
+          <button className="btn btn-secundario" onClick={sair}>
+            Sair da conta
+          </button>
+          <button className="btn btn-perigo" onClick={apagarConta} disabled={apagando}>
+            {apagando ? "Apagando..." : "Apagar conta e dados"}
           </button>
         </div>
       </section>

@@ -1,0 +1,57 @@
+# Este arquivo ACRESCENTA o app Lâmpada ao stack oficial do Supabase self-hosted.
+# Não é para usar sozinho — veja DOCKER.md para o passo a passo completo.
+#
+# Onde ele deve ficar: dentro da pasta docker/ do repositório oficial do Supabase
+# (a mesma pasta que já tem o docker-compose.yml e o .env oficiais), lado a lado
+# com uma pasta "lampada" contendo o código deste app.
+#
+#   docker/
+#   ├── docker-compose.yml            <- oficial, não mexa
+#   ├── docker-compose.override.yml   <- este arquivo
+#   ├── .env                          <- oficial, com as chaves do Supabase
+#   └── lampada/                      <- pasta do app (o zip descompactado)
+#
+# O Docker Compose lê docker-compose.yml e docker-compose.override.yml juntos
+# automaticamente quando os dois têm esse nome exato na mesma pasta.
+
+services:
+  lampada:
+    container_name: lampada-app
+    build:
+      context: ./lampada
+      dockerfile: Dockerfile
+      args:
+        # Precisa ser um endereço que o NAVEGADOR da pessoa alcance — não o nome interno
+        # do serviço no Docker. Ajuste a porta se você mudou API_GW_HTTP_PORT no .env.
+        NEXT_PUBLIC_SUPABASE_URL: ${LAMPADA_URL_PUBLICA:-http://localhost:8000}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+    restart: unless-stopped
+    ports:
+      - ${LAMPADA_PORT:-3000}:3000
+    environment:
+      # Usado só pelo código do servidor (dentro do container). "kong" é o apelido de rede
+      # do gateway do Supabase nesse stack (funciona mesmo quando o serviço interno é o Envoy).
+      SUPABASE_URL: http://kong:8000
+      NEXT_PUBLIC_SUPABASE_URL: ${LAMPADA_URL_PUBLICA:-http://localhost:8000}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      # Chave secreta — só existe dentro deste container, nunca chega ao navegador.
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
+      DAILY_LIMIT: ${DAILY_LIMIT:-40}
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      auth:
+        condition: service_started
+
+  # Captura os e-mails de link mágico localmente, sem precisar de um provedor de e-mail de verdade.
+  # Interface web em http://localhost:8025 — abra o e-mail recebido ali e clique no link.
+  mailpit:
+    container_name: lampada-mailpit
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - 8025:8025
